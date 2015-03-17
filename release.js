@@ -84,35 +84,14 @@ exports.register = function(commander){
         process.stdout.write('\n');
     }
     
-    var LRServer, LRTimer;
-    function reload(){
-        if(LRServer && LRServer.connections) {
-            fis.util.map(LRServer.connections, function(id, connection){
-                try {
-                    connection.send({
-                        command: 'reload',
-                        path: '*',
-                        liveCSS: true
-                    });
-                } catch (e) {
-                    try {
-                        connection.close();
-                    } catch (e) {}
-                    delete LRServer.connections[id];
-                }
-            });
-        }
-    }
+    var browserSync = require('browser-sync');
     
     var lastModified = {};
     var collection = {};
     var total = {};
     var deploy = require('./lib/deploy.js');
     
-    deploy.done = function(){
-        clearTimeout(LRTimer);
-        LRTimer = setTimeout(reload, 200);
-    };
+    deploy.done = browserSync.reload
     
     function release(opt){
         var flag, cost, start = Date.now();
@@ -195,7 +174,7 @@ exports.register = function(commander){
         .option('-o, --optimize', 'with optimizing', Boolean, false)
         .option('-p, --pack', 'with package', Boolean, true)
         .option('-w, --watch', 'monitor the changes of project')
-        .option('-L, --live', 'automatically reload your browser')
+        .option('-s, --sync', 'automatically sync your browser')
         .option('-c, --clean', 'clean compile cache', Boolean, false)
         .option('-r, --root <path>', 'set project root')
         .option('-f, --file <filename>', 'set fis-conf file')
@@ -277,39 +256,26 @@ exports.register = function(commander){
                 delete options.domains;
             }
             
-            if(options.live){
-                var LiveReloadServer = require('livereload-server-spec');
-                var port = fis.config.get('livereload.port', 8132);
-                LRServer = new LiveReloadServer({
-                    id: 'com.baidu.fis',
-                    name: 'fis-reload',
-                    version : fis.cli.info.version,
-                    port : port,
-                    protocols: {
-                        monitoring: 7
-                    }
-                });
-                LRServer.on('livereload.js', function(req, res) {
-                    var script = fis.util.fs.readFileSync(__dirname + '/vendor/livereload.js');
-                    res.writeHead(200, {
-                        'Content-Length': script.length,
-                        'Content-Type': 'text/javascript',
-                        'Connection': 'close'
-                    });
-                    res.end(script);
-                });
-                LRServer.listen(function(err) {
+            if(options.sync){
+                var port = fis.config.get('browsersync.port', fis.config.get('livereload.port', 8132));
+
+                browserSync({
+                    port: port,
+                    ui: {
+                        port: port + 1,
+                        weinre: {
+                            port: port + 2
+                        }
+                    },
+                    logSnippet: false,
+                    open: 'ui'
+                }, function(err) {
                     if (err) {
-                        err.message = 'LiveReload server Listening failed: ' + err.message;
+                        err.message = 'BrowserSync server Listening failed: ' + err.message;
                         fis.log.error(err);
                     }
                 });
                 process.stdout.write('\n Ψ '.bold.yellow + port + '\n');
-                //fix mac livereload
-                process.on('uncaughtException', function (err) {
-                    if(err.message !== 'read ECONNRESET') throw  err;
-                });
-                //delete options.live;
             }
             
             switch (typeof options.md5){
